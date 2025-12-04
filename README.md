@@ -40,7 +40,7 @@ Docker-образ для ROS2 Jazzy, который принимает изоб�
 ### 1. Клонируйте репозиторий
 
 ```bash
-git clone https://github.com/<your-username>/ros2-webrtc-camera.git
+git clone https://github.com/traptron/ROS2-WebRTC-Camera-Node.git
 cd ros2-webrtc-camera
 ```
 
