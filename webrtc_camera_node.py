@@ -2,8 +2,7 @@
 
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import Image
-from cv_bridge import CvBridge
+from sensor_msgs.msg import CompressedImage
 import cv2
 import asyncio
 from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
@@ -24,7 +23,8 @@ class VideoImageTrack(VideoStreamTrack):
             if self.img is not None:
                 frame = self.img
             else:
-                frame = cv2.imencode('.jpg', np.zeros((480, 640, 3), dtype=np.uint8))[1].tobytes()
+                # Заглушка: черное изображение
+                frame = cv2.imencode('.jpg', np.zeros((240, 240, 3), dtype=np.uint8))[1].tobytes()
         return frame
 
     def update_image(self, img):
@@ -36,28 +36,33 @@ class WebRTCCameraNode(Node):
     def __init__(self):
         super().__init__('webrtc_camera_node')
         self.subscription = self.create_subscription(
-            Image,
+            CompressedImage,
             '/camera/image_raw',
             self.image_callback,
             10
         )
-        self.cv_bridge = CvBridge()
         self.video_track = VideoImageTrack()
         self.relay = MediaRelay()
         self.pc = RTCPeerConnection()
         self.pc.addTrack(self.relay.subscribe(self.video_track))
 
+        # HTTP сервер для сигнализации
         self.app = web.Application()
         self.app.router.add_post('/offer', self.offer_handler)
         self.runner = None
 
     def image_callback(self, msg):
         try:
-            cv_image = self.cv_bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-            _, img_encoded = cv2.imencode('.jpg', cv_image)
-            self.video_track.update_image(img_encoded.tobytes())
+            # Декодируем JPEG изображение
+            np_arr = np.frombuffer(msg.data, np.uint8)
+            cv_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+            if cv_image is not None:
+                _, img_encoded = cv2.imencode('.jpg', cv_image)
+                self.video_track.update_image(img_encoded.tobytes())
+            else:
+                self.get_logger().error('Failed to decode image')
         except Exception as e:
-            self.get_logger().error(f'Error processing image: {e}')
+            self.get_logger().error(f'Error processing compressed image: {e}')
 
     async def offer_handler(self, request):
         params = await request.json()
